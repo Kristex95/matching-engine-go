@@ -1,38 +1,42 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
+	"sync"
 
 	"matching-engine/internal/orderbook"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
-	book *orderbook.OrderBook
+	books map[string]*orderbook.OrderBook
+	mu    sync.RWMutex
+	rdb   *redis.Client
 }
 
-func NewHandler() *Handler {
+func NewHandler(rdb *redis.Client) *Handler {
 	return &Handler{
-		book: orderbook.NewOrderBook(),
+		books: make(map[string]*orderbook.OrderBook),
+		rdb:   rdb,
 	}
 }
 
-func (handler *Handler) Handle(event StreamEvent) error {
-
+func (handler *Handler) Handle(ctx context.Context, event StreamEvent) error {
 	switch event.AggregateType {
-
 	case "Order":
-		return handler.handleOrder(event)
-
+		return handler.handleOrder(ctx, event)
 	default:
 		fmt.Println("unknown aggregate:", event.AggregateType)
 	}
-
 	return nil
 }
 
-func (handler *Handler) handleOrder(event StreamEvent) error {
+func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) error {
 
 	switch event.EventType {
 
@@ -49,6 +53,25 @@ func (handler *Handler) handleOrder(event StreamEvent) error {
 
 		if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
 			return err
+		}
+
+		currency := strings.ToUpper(payload.Currency)
+		if currency == "USDT" {
+			return fmt.Errorf("invalid currency: USDT is the quote currency and does not have an independent order book")
+		}
+
+		handler.mu.RLock()
+		book, ok := handler.books[currency]
+		handler.mu.RUnlock()
+
+		if !ok {
+			handler.mu.Lock()
+			book, ok = handler.books[currency]
+			if !ok {
+				book = orderbook.NewOrderBook(currency, "USDT")
+				handler.books[currency] = book
+			}
+			handler.mu.Unlock()
 		}
 
 		price, err := strconv.ParseFloat(payload.Price, 64)
@@ -68,9 +91,30 @@ func (handler *Handler) handleOrder(event StreamEvent) error {
 			Price:  price,
 			Amount: amount,
 		}
-		
-		handler.book.Match(&order)
-		handler.book.Print()
+
+		trades := book.Match(&order)
+
+		for _, trade := range trades {
+			tradeBytes, err := json.Marshal(trade)
+			if err != nil {
+				return fmt.Errorf("failed to marshal trade: %w", err)
+			}
+
+			// Push to trades-stream
+			err = handler.rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: "trades-stream",
+				Values: map[string]interface{}{
+					"event_type": "trade-executed",
+					"payload":    string(tradeBytes),
+				},
+			}).Err()
+
+			if err != nil {
+				return fmt.Errorf("failed to push trade to redis: %w", err)
+			}
+		}
+
+		book.Print()
 
 	default:
 		fmt.Println("unknown event:", event.EventType)

@@ -1,36 +1,49 @@
 package orderbook
 
 import (
-	"fmt"
 	"sort"
 )
 
-func (ob *OrderBook) Match(order *Order) {
+func (ob *OrderBook) Match(order *Order) []Trade {
 	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
+	var trades []Trade
+	onTradeWrapper := func(taker, maker string, price, qty float64) {
+		trades = append(trades, Trade{
+			TakerOrderID:  taker,
+			MakerOrderID:  maker,
+			Price:         price,
+			Amount:        qty,
+			Side:          order.Side,
+			BaseCurrency:  ob.BaseCurrency,
+			QuoteCurrency: ob.QuoteCurrency,
+		})
+	}
 
 	switch order.Type {
 	case "market":
-		ob.matchMarket(order)
+		ob.matchMarket(order, onTradeWrapper)
 	case "limit":
-		ob.matchLimit(order)
+		ob.matchLimit(order, onTradeWrapper)
 	}
 
-	defer ob.mu.Unlock()
+	return trades
 }
 
-func (ob *OrderBook) matchMarket(order *Order) {
+func (ob *OrderBook) matchMarket(order *Order, onTrade func(string, string, float64, float64)) {
 	if order.Side == "buy" {
-		ob.matchMarketBuy(order)
+		ob.matchMarketBuy(order, onTrade)
 	} else {
-		ob.matchMarketSell(order)
+		ob.matchMarketSell(order, onTrade)
 	}
 }
 
-func (ob *OrderBook) matchLimit(order *Order) {
+func (ob *OrderBook) matchLimit(order *Order, onTrade func(string, string, float64, float64)) {
 	if order.Side == "buy" {
-		ob.matchLimitBuy(order)
+		ob.matchLimitBuy(order, onTrade)
 	} else {
-		ob.matchSell(order)
+		ob.matchLimitSell(order, onTrade)
 	}
 }
 
@@ -101,87 +114,35 @@ func (ob *OrderBook) match(
 }
 
 // limit orders
-func (ob *OrderBook) matchLimitBuy(order *Order) {
-	fmt.Println("=== MATCH BUY ===")
-
-	ob.match(
-		order,
-		ob.Asks,
-		true,
-		func(orderPrice, askPrice float64) bool {
-			return orderPrice >= askPrice
-		},
-		func(taker string, maker string, price float64, qty float64) {
-			fmt.Printf(
-				"TRADE BUY=%s SELL=%s PRICE=%f QTY=%f\n",
-				taker, maker, price, qty,
-			)
-		},
-		func(o *Order) {
-			ob.Add(*o)
-		},
+func (ob *OrderBook) matchLimitBuy(order *Order, onTrade func(string, string, float64, float64)) {
+	ob.match(order, ob.Asks, true,
+		func(orderPrice, askPrice float64) bool { return orderPrice >= askPrice },
+		onTrade,
+		func(o *Order) { ob.Add(*o) },
 	)
 }
 
-func (ob *OrderBook) matchSell(order *Order) {
-	fmt.Println("=== MATCH SELL ===")
-
-	ob.match(
-		order,
-		ob.Bids,
-		false,
-		func(orderPrice, bidPrice float64) bool {
-			return orderPrice <= bidPrice
-		},
-		func(taker string, maker string, price float64, qty float64) {
-			fmt.Printf(
-				"TRADE SELL=%s BUY=%s PRICE=%f QTY=%f\n",
-				taker, maker, price, qty,
-			)
-		},
-		func(o *Order) {
-			ob.Add(*o)
-		},
+func (ob *OrderBook) matchLimitSell(order *Order, onTrade func(string, string, float64, float64)) {
+	ob.match(order, ob.Bids, false,
+		func(orderPrice, bidPrice float64) bool { return orderPrice <= bidPrice },
+		onTrade,
+		func(o *Order) { ob.Add(*o) },
 	)
 }
 
 // market orders
-func (ob *OrderBook) matchMarketBuy(order *Order) {
-	fmt.Println("=== MARKET BUY ===")
-
-	ob.match(
-		order,
-		ob.Asks,
-		true,
+func (ob *OrderBook) matchMarketBuy(order *Order, onTrade func(string, string, float64, float64)) {
+	ob.match(order, ob.Asks, true,
 		func(_, _ float64) bool { return true },
-		func(taker string, maker string, price float64, qty float64) {
-			fmt.Printf(
-				"TRADE MARKET BUY=%s SELL=%s PRICE=%f QTY=%f\n",
-				taker, maker, price, qty,
-			)
-		},
-		func(o *Order) {
-			fmt.Println("MARKET ORDER PARTIALLY FILLED OR REJECTED")
-		},
+		onTrade,
+		func(o *Order) {},
 	)
 }
 
-func (ob *OrderBook) matchMarketSell(order *Order) {
-	fmt.Println("=== MARKET SELL ===")
-
-	ob.match(
-		order,
-		ob.Bids,
-		false,
+func (ob *OrderBook) matchMarketSell(order *Order, onTrade func(string, string, float64, float64)) {
+	ob.match(order, ob.Bids, false,
 		func(_, _ float64) bool { return true },
-		func(taker string, maker string, price float64, qty float64) {
-			fmt.Printf(
-				"TRADE MARKET SELL=%s BUY=%s PRICE=%f QTY=%f\n",
-				taker, maker, price, qty,
-			)
-		},
-		func(o *Order) {
-			fmt.Println("MARKET ORDER PARTIALLY FILLED OR REJECTED")
-		},
+		onTrade,
+		func(o *Order) {},
 	)
 }

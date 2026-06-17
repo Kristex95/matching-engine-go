@@ -17,33 +17,42 @@ type Consumer struct {
 func NewConsumer(rdb *redis.Client) *Consumer {
 	return &Consumer{
 		rdb:    rdb,
-		engine: engine.NewHandler(),
+		engine: engine.NewHandler(rdb),
 	}
 }
 
 func (c *Consumer) Start() {
-
 	ctx := context.Background()
+	streamName := "matching-stream"
+	groupName := "workers"
+
+	err := c.rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err()
+	if err != nil {
+		if err.Error() != "BUSYGROUP Consumer Group name already exists" {
+			log.Fatalf("failed to initialize stream/group: %v", err)
+		}
+	}
 
 	for {
+		// 2. Now you can safely read from the group
 		streams, err := c.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    "workers",
+			Group:    groupName,
 			Consumer: "consumer-1",
-			Streams:  []string{"matching-stream", ">"},
+			Streams:  []string{streamName, ">"},
 			Count:    10,
 			Block:    0,
 		}).Result()
 
 		if err != nil {
-			log.Fatal(err)
+			log.Println("read error:", err)
+			continue
 		}
 
 		for _, stream := range streams {
 			for _, msg := range stream.Messages {
-
 				event := ParseMessage(msg)
 
-				c.engine.Handle(engine.StreamEvent{
+				err = c.engine.Handle(ctx, engine.StreamEvent{
 					AggregateType: event.AggregateType,
 					EventType:     event.EventType,
 					Payload:       event.Payload,
@@ -54,7 +63,7 @@ func (c *Consumer) Start() {
 					continue
 				}
 
-				err = c.rdb.XAck(ctx, "matching-stream", "workers", msg.ID).Err()
+				err = c.rdb.XAck(ctx, streamName, groupName, msg.ID).Err()
 				if err != nil {
 					log.Println("ack error:", err)
 				}
