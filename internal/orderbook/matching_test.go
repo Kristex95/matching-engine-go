@@ -96,6 +96,47 @@ func TestFIFOWithinPriceLevel(t *testing.T) {
 	}
 }
 
+func TestSequentialBuyOrdersMatchRestingSells(t *testing.T) {
+	ob := NewOrderBook("BTC", "USDT")
+
+	// Two sell orders at the same price level.
+	ob.Match(&Order{ID: "s1", Side: "sell", Type: "limit", Price: 100, Amount: 1.0})
+	ob.Match(&Order{ID: "s2", Side: "sell", Type: "limit", Price: 100, Amount: 1.0})
+
+	// First buy partially fills s1.
+	firstBuy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: 100, Amount: 0.75}
+	firstTrades := ob.Match(firstBuy)
+
+	if len(firstTrades) != 1 {
+		t.Fatalf("expected 1 trade from first buy, got %d", len(firstTrades))
+	}
+	if firstTrades[0].MakerOrderID != "s1" || firstTrades[0].Amount != 0.75 || firstTrades[0].Price != 100 {
+		t.Errorf("first buy should partially match s1: %+v", firstTrades[0])
+	}
+
+	// Second buy finishes s1, then partially fills s2.
+	secondBuy := &Order{ID: "b2", Side: "buy", Type: "limit", Price: 100, Amount: 0.75}
+	secondTrades := ob.Match(secondBuy)
+
+	if len(secondTrades) != 2 {
+		t.Fatalf("expected 2 trades from second buy, got %d", len(secondTrades))
+	}
+	if secondTrades[0].MakerOrderID != "s1" || secondTrades[0].Amount != 0.25 || secondTrades[0].Price != 100 {
+		t.Errorf("second buy should finish s1 first: %+v", secondTrades[0])
+	}
+	if secondTrades[1].MakerOrderID != "s2" || secondTrades[1].Amount != 0.5 || secondTrades[1].Price != 100 {
+		t.Errorf("second buy should partially match s2: %+v", secondTrades[1])
+	}
+
+	if level, ok := ob.Asks[100]; ok {
+		if len(level.Orders) != 1 || level.Orders[0].ID != "s2" || level.Orders[0].Amount != 0.5 {
+			t.Errorf("expected 0.5 remaining in s2, got %+v", level.Orders)
+		}
+	} else {
+		t.Error("price level 100 should still exist")
+	}
+}
+
 func TestLimitOrderPartiallyMatchedAndAddedToBook(t *testing.T) {
 	ob := NewOrderBook("BTC", "USDT")
 
