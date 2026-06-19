@@ -11,7 +11,8 @@ const (
 )
 
 func (ob *OrderBook) Print() {
-    fmt.Printf("\n\n\n%s======== ASK ========%s\n", Red, Reset)
+	fmt.Printf("\n\n\n%s====== %s ======%s", Cyan, ob.BaseCurrency+"/"+ob.QuoteCurrency, Reset)
+    fmt.Printf("\n%s======== ASK ========%s\n", Red, Reset)
     for price, level := range ob.Asks {
         fmt.Printf("%sPrice: %f%s\n", Yellow, price, Reset) 
         for _, o := range level.Orders {

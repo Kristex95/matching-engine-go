@@ -3,15 +3,19 @@ package orderbook
 import "sync"
 
 type OrderBook struct {
-	mu sync.Mutex
-	Bids map[float64]*PriceLevel
-	Asks map[float64]*PriceLevel
+	mu            sync.Mutex
+	BaseCurrency  string
+	QuoteCurrency string
+	Bids          map[float64]*PriceLevel
+	Asks          map[float64]*PriceLevel
 }
 
-func NewOrderBook() *OrderBook {
+func NewOrderBook(base, quote string) *OrderBook {
 	return &OrderBook{
-		Bids: make(map[float64]*PriceLevel),
-		Asks: make(map[float64]*PriceLevel),
+		BaseCurrency:  base,
+		QuoteCurrency: quote,
+		Bids:          make(map[float64]*PriceLevel),
+		Asks:          make(map[float64]*PriceLevel),
 	}
 }
 
