@@ -1,6 +1,9 @@
 package orderbook
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 type OrderBook struct {
 	mu            sync.Mutex
@@ -49,4 +52,80 @@ func (ob *OrderBook) getLevel(order Order) *PriceLevel {
 	}
 
 	return level
+}
+
+func (ob *OrderBook) Snapshot(depth int) Snapshot {
+    ob.mu.Lock()
+    defer ob.mu.Unlock()
+
+    bids := ob.topBids(depth)
+    asks := ob.topAsks(depth)
+
+    return Snapshot{
+        Symbol: ob.BaseCurrency + ob.QuoteCurrency,
+        Bids:   bids,
+        Asks:   asks,
+    }
+}
+
+func (ob *OrderBook) topBids(depth int) [][]float64 {
+    prices := make([]float64, 0, len(ob.Bids))
+
+    for price := range ob.Bids {
+        prices = append(prices, price)
+    }
+
+    sort.Sort(sort.Reverse(sort.Float64Slice(prices)))
+
+    if len(prices) > depth {
+        prices = prices[:depth]
+    }
+
+    levels := make([][]float64, 0, len(prices))
+
+    for _, price := range prices {
+        level := ob.Bids[price]
+
+        levels = append(levels, []float64{
+            price,
+            level.TotalAmount(),
+        })
+    }
+
+    return levels
+}
+
+func (ob *OrderBook) topAsks(depth int) [][]float64 {
+	prices := make([]float64, 0, len(ob.Asks))
+
+	for price := range ob.Asks {
+		prices = append(prices, price)
+	}
+
+	sort.Float64s(prices)
+
+	if len(prices) > depth {
+		prices = prices[:depth]
+	}
+
+	levels := make([][]float64, 0, len(prices))
+
+	for _, price := range prices {
+		level := ob.Asks[price]
+
+		levels = append(levels, []float64{
+			price,
+			level.TotalAmount(),
+		})
+	}
+
+	return levels
+}
+
+func (pl *PriceLevel) TotalAmount() float64 {
+	var total float64
+	for _, order := range pl.Orders {
+		total += order.Amount
+	}
+	return total
 }

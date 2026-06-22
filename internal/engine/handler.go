@@ -93,6 +93,9 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 		}
 
 		trades := book.Match(&order)
+		if err := handler.cacheOrderBook(ctx, currency, book); err != nil {
+			return err
+		}
 
 		for _, trade := range trades {
 			tradeBytes, err := json.Marshal(trade)
@@ -121,6 +124,27 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 	}
 
 	return nil
+}
+
+func (handler *Handler) cacheOrderBook(
+	ctx context.Context,
+	currency string,
+	book *orderbook.OrderBook,
+) error {
+
+	snapshot := book.Snapshot(10)
+
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+
+	return handler.rdb.Set(
+		ctx,
+		"orderbook:"+currency,
+		data,
+		0,
+	).Err()
 }
 
 type StreamEvent struct {
