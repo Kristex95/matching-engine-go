@@ -34,7 +34,6 @@ func (c *Consumer) Start() {
 	}
 
 	for {
-		// 2. Now you can safely read from the group
 		streams, err := c.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
 			Consumer: "consumer-1",

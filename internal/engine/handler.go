@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
 	"matching-engine/internal/orderbook"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/shopspring/decimal"
 )
 
 type Handler struct {
@@ -37,11 +37,8 @@ func (handler *Handler) Handle(ctx context.Context, event StreamEvent) error {
 }
 
 func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) error {
-
 	switch event.EventType {
-
 	case "order-created":
-
 		var payload struct {
 			OrderID  string `json:"order_id"`
 			Side     string `json:"side"`
@@ -74,14 +71,14 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 			handler.mu.Unlock()
 		}
 
-		price, err := strconv.ParseFloat(payload.Price, 64)
+		price, err := decimal.NewFromString(payload.Price)
 		if err != nil {
-			return err
+			return fmt.Errorf("invalid price format: %w", err)
 		}
 
-		amount, err := strconv.ParseFloat(payload.Amount, 64)
+		amount, err := decimal.NewFromString(payload.Amount)
 		if err != nil {
-			return err
+			return fmt.Errorf("invalid amount format: %w", err)
 		}
 
 		order := orderbook.Order{
@@ -103,7 +100,6 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 				return fmt.Errorf("failed to marshal trade: %w", err)
 			}
 
-			// Push to trades-stream
 			err = handler.rdb.XAdd(ctx, &redis.XAddArgs{
 				Stream: "trades-stream",
 				Values: map[string]interface{}{
@@ -117,8 +113,6 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 			}
 		}
 
-		book.Print()
-
 	default:
 		fmt.Println("unknown event:", event.EventType)
 	}
@@ -131,7 +125,6 @@ func (handler *Handler) cacheOrderBook(
 	currency string,
 	book *orderbook.OrderBook,
 ) error {
-
 	snapshot := book.Snapshot(10)
 
 	data, err := json.Marshal(snapshot)
@@ -139,12 +132,7 @@ func (handler *Handler) cacheOrderBook(
 		return err
 	}
 
-	return handler.rdb.Set(
-		ctx,
-		"orderbook:"+currency,
-		data,
-		0,
-	).Err()
+	return handler.rdb.Set(ctx, "orderbook:"+currency, data, 0).Err()
 }
 
 type StreamEvent struct {

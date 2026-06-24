@@ -3,38 +3,47 @@ package orderbook
 import (
 	"sort"
 	"sync"
+
+	"github.com/shopspring/decimal"
 )
 
 type OrderBook struct {
 	mu            sync.Mutex
 	BaseCurrency  string
 	QuoteCurrency string
-	Bids          map[float64]*PriceLevel
-	Asks          map[float64]*PriceLevel
+	Bids          map[string]*PriceLevel
+	Asks          map[string]*PriceLevel
 }
 
 func NewOrderBook(base, quote string) *OrderBook {
 	return &OrderBook{
 		BaseCurrency:  base,
 		QuoteCurrency: quote,
-		Bids:          make(map[float64]*PriceLevel),
-		Asks:          make(map[float64]*PriceLevel),
+		Bids:          make(map[string]*PriceLevel),
+		Asks:          make(map[string]*PriceLevel),
 	}
 }
 
 type PriceLevel struct {
-	Price  float64
+	Price  decimal.Decimal
 	Orders []*Order
 }
 
 func (ob *OrderBook) Add(order Order) {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+	ob.add(order)
+}
+
+func (ob *OrderBook) add(order Order) {
 	level := ob.getLevel(order)
-	level.Orders = append(level.Orders, &order)
+	
+	heapOrder := order
+	level.Orders = append(level.Orders, &heapOrder)
 }
 
 func (ob *OrderBook) getLevel(order Order) *PriceLevel {
-
-	var book map[float64]*PriceLevel
+	var book map[string]*PriceLevel
 
 	if order.Side == "buy" {
 		book = ob.Bids
@@ -42,90 +51,92 @@ func (ob *OrderBook) getLevel(order Order) *PriceLevel {
 		book = ob.Asks
 	}
 
-	level, ok := book[order.Price]
+	priceKey := order.Price.String()
+
+	level, ok := book[priceKey]
 	if !ok {
 		level = &PriceLevel{
 			Price:  order.Price,
 			Orders: []*Order{},
 		}
-		book[order.Price] = level
+		book[priceKey] = level
 	}
 
 	return level
 }
 
 func (ob *OrderBook) Snapshot(depth int) Snapshot {
-    ob.mu.Lock()
-    defer ob.mu.Unlock()
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
 
-    bids := ob.topBids(depth)
-    asks := ob.topAsks(depth)
+	bids := ob.topBids(depth)
+	asks := ob.topAsks(depth)
 
-    return Snapshot{
-        Symbol: ob.BaseCurrency + ob.QuoteCurrency,
-        Bids:   bids,
-        Asks:   asks,
-    }
+	return Snapshot{
+		Symbol: ob.BaseCurrency + ob.QuoteCurrency,
+		Bids:   bids,
+		Asks:   asks,
+	}
 }
 
-func (ob *OrderBook) topBids(depth int) [][]float64 {
-    prices := make([]float64, 0, len(ob.Bids))
+func (ob *OrderBook) topBids(depth int) [][]string {
+	prices := make([]decimal.Decimal, 0, len(ob.Bids))
 
-    for price := range ob.Bids {
-        prices = append(prices, price)
-    }
-
-    sort.Sort(sort.Reverse(sort.Float64Slice(prices)))
-
-    if len(prices) > depth {
-        prices = prices[:depth]
-    }
-
-    levels := make([][]float64, 0, len(prices))
-
-    for _, price := range prices {
-        level := ob.Bids[price]
-
-        levels = append(levels, []float64{
-            price,
-            level.TotalAmount(),
-        })
-    }
-
-    return levels
-}
-
-func (ob *OrderBook) topAsks(depth int) [][]float64 {
-	prices := make([]float64, 0, len(ob.Asks))
-
-	for price := range ob.Asks {
-		prices = append(prices, price)
+	for priceStr := range ob.Bids {
+		d, _ := decimal.NewFromString(priceStr)
+		prices = append(prices, d)
 	}
 
-	sort.Float64s(prices)
+	sort.Slice(prices, func(i, j int) bool {
+		return prices[i].GreaterThan(prices[j])
+	})
 
 	if len(prices) > depth {
 		prices = prices[:depth]
 	}
 
-	levels := make([][]float64, 0, len(prices))
-
+	levels := make([][]string, 0, len(prices))
 	for _, price := range prices {
-		level := ob.Asks[price]
-
-		levels = append(levels, []float64{
-			price,
-			level.TotalAmount(),
+		level := ob.Bids[price.String()]
+		levels = append(levels, []string{
+			price.String(),
+			level.TotalAmount().String(),
 		})
 	}
-
 	return levels
 }
 
-func (pl *PriceLevel) TotalAmount() float64 {
-	var total float64
+func (ob *OrderBook) topAsks(depth int) [][]string {
+	prices := make([]decimal.Decimal, 0, len(ob.Asks))
+
+	for priceStr := range ob.Asks {
+		d, _ := decimal.NewFromString(priceStr)
+		prices = append(prices, d)
+	}
+
+	sort.Slice(prices, func(i, j int) bool {
+		return prices[i].LessThan(prices[j])
+	})
+
+	if len(prices) > depth {
+		prices = prices[:depth]
+	}
+
+	levels := make([][]string, 0, len(prices))
+	for _, price := range prices {
+		level := ob.Asks[price.String()]
+		levels = append(levels, []string{
+			price.String(),
+			level.TotalAmount().String(),
+		})
+	}
+	return levels
+}
+
+func (pl *PriceLevel) TotalAmount() decimal.Decimal {
+	total := decimal.Zero
 	for _, order := range pl.Orders {
-		total += order.Amount
+		total = total.Add(order.Amount)
 	}
 	return total
 }
