@@ -1,9 +1,11 @@
 package orderbook
 
+import "github.com/shopspring/decimal"
+
 type Order struct {
 	ID     string
 	Side   string
 	Type   string
-	Price  float64
-	Amount float64
+	Price  decimal.Decimal
+	Amount decimal.Decimal
 }

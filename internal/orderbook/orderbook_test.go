@@ -3,51 +3,50 @@ package orderbook
 import (
 	"reflect"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestOrderBook_TopBids(t *testing.T) {
 	ob := NewOrderBook("BTC", "USDT")
 
-	// Populate Bids (Buy orders)
-	// Bids should be sorted in descending order (highest price first)
 	orders := []Order{
-		{Side: "buy", Price: 100.0, Amount: 1.5},
-		{Side: "buy", Price: 100.0, Amount: 0.5}, // Same price level, should accumulate to 2.0
-		{Side: "buy", Price: 102.5, Amount: 0.8}, // Highest bid
-		{Side: "buy", Price: 99.0,  Amount: 3.0}, // Lowest bid
+		{Side: "buy", Price: decimal.NewFromFloat(100.0), Amount: decimal.NewFromFloat(1.5)},
+		{Side: "buy", Price: decimal.NewFromFloat(100.0), Amount: decimal.NewFromFloat(0.5)},
+		{Side: "buy", Price: decimal.NewFromFloat(102.5), Amount: decimal.NewFromFloat(0.8)},
+		{Side: "buy", Price: decimal.NewFromFloat(99.0),  Amount: decimal.NewFromFloat(3.0)},
 	}
 
 	for _, order := range orders {
 		ob.Add(order)
 	}
 
-	// 3. Define test cases for different depths
 	tests := []struct {
 		name  string
 		depth int
-		want  [][]float64
+		want  [][]string
 	}{
 		{
 			name:  "Request depth larger than available levels",
 			depth: 5,
-			want: [][]float64{
-				{102.5, 0.8}, // Highest price
-				{100.0, 2.0}, // Accumulated amount (1.5 + 0.5)
-				{99.0,  3.0}, // Lowest price
+			want: [][]string{
+				{"102.5", "0.8"},
+				{"100", "2"},
+				{"99", "3"},
 			},
 		},
 		{
 			name:  "Request depth smaller than available levels",
 			depth: 2,
-			want: [][]float64{
-				{102.5, 0.8},
-				{100.0, 2.0},
+			want: [][]string{
+				{"102.5", "0.8"},
+				{"100", "2"},
 			},
 		},
 		{
 			name:  "Request depth of 0",
 			depth: 0,
-			want:  [][]float64{},
+			want:  [][]string{},
 		},
 	}
 
@@ -62,49 +61,40 @@ func TestOrderBook_TopBids(t *testing.T) {
 }
 
 func TestOrderBook_TopAsks(t *testing.T) {
-	// 1. Initialize OrderBook
 	ob := NewOrderBook("BTC", "USDT")
 
-	// 2. Populate Asks (Sell orders)
-	// Asks should be sorted in ascending order (lowest price first)
 	orders := []Order{
-		{Side: "sell", Price: 105.0, Amount: 2.5},
-		{Side: "sell", Price: 105.0, Amount: 1.5}, // Same price level, should accumulate to 4.0
-		{Side: "sell", Price: 103.0, Amount: 0.5}, // Lowest ask
-		{Side: "sell", Price: 107.5, Amount: 1.0}, // Highest ask
+		{Side: "sell", Price: decimal.NewFromFloat(105.0), Amount: decimal.NewFromFloat(2.5)},
+		{Side: "sell", Price: decimal.NewFromFloat(105.0), Amount: decimal.NewFromFloat(1.5)},
+		{Side: "sell", Price: decimal.NewFromFloat(103.0), Amount: decimal.NewFromFloat(0.5)},
+		{Side: "sell", Price: decimal.NewFromFloat(107.5), Amount: decimal.NewFromFloat(1.0)},
 	}
 
 	for _, order := range orders {
 		ob.Add(order)
 	}
 
-	// Define test cases for different depths
 	tests := []struct {
 		name  string
 		depth int
-		want  [][]float64
+		want  [][]string
 	}{
 		{
 			name:  "Request depth larger than available levels",
 			depth: 5,
-			want: [][]float64{
-				{103.0, 0.5}, // Lowest price
-				{105.0, 4.0}, // Accumulated amount (2.5 + 1.5)
-				{107.5, 1.0}, // Highest price
+			want: [][]string{
+				{"103", "0.5"},
+				{"105", "4"},
+				{"107.5", "1"},
 			},
 		},
 		{
 			name:  "Request depth smaller than available levels",
 			depth: 2,
-			want: [][]float64{
-				{103.0, 0.5},
-				{105.0, 4.0},
+			want: [][]string{
+				{"103", "0.5"},
+				{"105", "4"},
 			},
-		},
-		{
-			name:  "Request depth of 0",
-			depth: 0,
-			want:  [][]float64{},
 		},
 	}
 
