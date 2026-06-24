@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"sort"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -20,6 +21,7 @@ func (ob *OrderBook) Match(order *Order) []Trade {
 			Side:          order.Side,
 			BaseCurrency:  ob.BaseCurrency,
 			QuoteCurrency: ob.QuoteCurrency,
+			Timestamp:     time.Now().UnixMilli(),
 		})
 	}
 

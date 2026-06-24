@@ -10,4 +10,5 @@ type Trade struct {
 	Side          string  			`json:"side"` // "buy" or "sell" relative to the taker
 	BaseCurrency  string  			`json:"base_currency"`
 	QuoteCurrency string  			`json:"quote_currency"`
+	Timestamp     int64           	`json:"timestamp"`
 }

@@ -71,9 +71,13 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 			handler.mu.Unlock()
 		}
 
-		price, err := decimal.NewFromString(payload.Price)
-		if err != nil {
-			return fmt.Errorf("invalid price format: %w", err)
+		price := decimal.Zero
+		if payload.Type == "limit" {
+			var err error
+			price, err = decimal.NewFromString(payload.Price)
+			if err != nil {
+				return fmt.Errorf("invalid price format: %w", err)
+			}
 		}
 
 		amount, err := decimal.NewFromString(payload.Amount)
