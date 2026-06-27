@@ -139,6 +139,53 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 			}
 		}
 
+	case "order-cancelled":
+		var payload struct {
+			OrderID  string `json:"order_id"`
+			Currency string `json:"currency"`
+		}
+
+		if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
+			return err
+		}
+
+		currency := strings.ToUpper(payload.Currency)
+		
+		handler.mu.RLock()
+		book, ok := handler.books[currency]
+		handler.mu.RUnlock()
+
+		if !ok {
+			return fmt.Errorf("orderbook not found for currency: %s", currency)
+		}
+
+		orderUpdate, found := book.Cancel(payload.OrderID)
+		if !found {
+			fmt.Printf("cancel rejected: order %s not found or already filled\n", payload.OrderID)
+			return nil 
+		}
+
+		if err := handler.cacheOrderBook(ctx, currency, book); err != nil {
+			return err
+		}
+
+		updateBytes, err := json.Marshal(orderUpdate)
+		if err != nil {
+			return fmt.Errorf("failed to marshal order cancel update: %w", err)
+		}
+
+		err = handler.rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: "orders-status-stream",
+			Values: map[string]interface{}{
+				"event_type": "order-updated",
+				"payload":    string(updateBytes),
+			},
+		}).Err()
+
+		if err != nil {
+			return fmt.Errorf("failed to push order cancel update to redis: %w", err)
+		}
+
 	default:
 		fmt.Println("unknown event:", event.EventType)
 	}

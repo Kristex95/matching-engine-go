@@ -140,3 +140,48 @@ func (pl *PriceLevel) TotalAmount() decimal.Decimal {
 	}
 	return total
 }
+
+func (ob *OrderBook) Cancel(orderID string) (*OrderUpdate, bool) {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
+	var foundOrder *Order
+	var remainingAmount decimal.Decimal
+	isFound := false
+
+	removeFromSide := func(book map[string]*PriceLevel) bool {
+		for priceKey, level := range book {
+			for i, order := range level.Orders {
+				if order.ID == orderID {
+					foundOrder = order
+					remainingAmount = order.Amount
+					
+					level.Orders = append(level.Orders[:i], level.Orders[i+1:]...)
+					
+					if len(level.Orders) == 0 {
+						delete(book, priceKey)
+					}
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	if removeFromSide(ob.Asks) {
+		isFound = true
+	} else if removeFromSide(ob.Bids) {
+		isFound = true
+	}
+
+	if !isFound {
+		return nil, false
+	}
+
+	return &OrderUpdate{
+		OrderID:         foundOrder.ID,
+		Status:          "cancelled",
+		FilledAmount:    decimal.Zero,
+		RemainingAmount: remainingAmount,
+	}, true
+}
