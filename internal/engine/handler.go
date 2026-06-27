@@ -93,11 +93,33 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 			Amount: amount,
 		}
 
-		trades := book.Match(&order)
+		trades, orderUpdates := book.Match(&order)
+		
 		if err := handler.cacheOrderBook(ctx, currency, book); err != nil {
 			return err
 		}
 
+		// Broadcast Order Updates to 'orders-status-stream'
+		for _, update := range orderUpdates {
+			updateBytes, err := json.Marshal(update)
+			if err != nil {
+				return fmt.Errorf("failed to marshal order update: %w", err)
+			}
+
+			err = handler.rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: "orders-status-stream",
+				Values: map[string]interface{}{
+					"event_type": "order-updated",
+					"payload":    string(updateBytes),
+				},
+			}).Err()
+
+			if err != nil {
+				return fmt.Errorf("failed to push order update to redis: %w", err)
+			}
+		}
+
+		// Broadcast Trade Reports to 'trades-stream' 
 		for _, trade := range trades {
 			tradeBytes, err := json.Marshal(trade)
 			if err != nil {

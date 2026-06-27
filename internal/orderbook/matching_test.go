@@ -15,7 +15,7 @@ func TestLimitOrderMatching(t *testing.T) {
 
 	// 2. Taker Buy order: 1.5 @ 51000
 	buy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: decimal.NewFromInt(51000), Amount: decimal.NewFromFloat(1.5)}
-	trades := ob.Match(buy)
+	trades, _ := ob.Match(buy)
 
 	if len(trades) != 2 {
 		t.Fatalf("expected 2 trades, got %d", len(trades))
@@ -49,7 +49,7 @@ func TestMarketOrderMatching(t *testing.T) {
 	ob.Match(&Order{ID: "b2", Side: "buy", Type: "limit", Price: decimal.NewFromInt(48000), Amount: decimal.NewFromFloat(1.0)})
 
 	sell := &Order{ID: "s1", Side: "sell", Type: "market", Amount: decimal.NewFromFloat(1.5)}
-	trades := ob.Match(sell)
+	trades, _ := ob.Match(sell)
 
 	if len(trades) != 2 {
 		t.Fatalf("expected 2 trades, got %d", len(trades))
@@ -70,7 +70,7 @@ func TestFIFOWithinPriceLevel(t *testing.T) {
 	ob.Match(&Order{ID: "s2", Side: "sell", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(1.0)})
 
 	buy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(1.5)}
-	trades := ob.Match(buy)
+	trades, _ := ob.Match(buy)
 
 	if len(trades) != 2 {
 		t.Fatalf("expected 2 trades, got %d", len(trades))
@@ -88,14 +88,14 @@ func TestSequentialBuyOrdersMatchRestingSells(t *testing.T) {
 	ob.Match(&Order{ID: "s2", Side: "sell", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(1.0)})
 
 	firstBuy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(0.75)}
-	firstTrades := ob.Match(firstBuy)
+	firstTrades, _ := ob.Match(firstBuy)
 
 	if len(firstTrades) != 1 {
 		t.Fatalf("expected 1 trade from first buy, got %d", len(firstTrades))
 	}
 
 	secondBuy := &Order{ID: "b2", Side: "buy", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(0.75)}
-	secondTrades := ob.Match(secondBuy)
+	secondTrades, _ := ob.Match(secondBuy)
 
 	if len(secondTrades) != 2 {
 		t.Fatalf("expected 2 trades from second buy, got %d", len(secondTrades))
@@ -108,7 +108,7 @@ func TestLimitOrderPartiallyMatchedAndAddedToBook(t *testing.T) {
 	ob.Match(&Order{ID: "s1", Side: "sell", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(1.0)})
 
 	buy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: decimal.NewFromInt(100), Amount: decimal.NewFromFloat(1.5)}
-	trades := ob.Match(buy)
+	trades, _ := ob.Match(buy)
 
 	if len(trades) != 1 || !trades[0].Amount.Equal(decimal.NewFromFloat(1.0)) {
 		t.Fatalf("expected 1.0 match, got %+v", trades)
@@ -127,7 +127,7 @@ func TestPriceImprovementMatching(t *testing.T) {
 	ob.Match(&Order{ID: "s2", Side: "sell", Type: "limit", Price: decimal.NewFromInt(11000), Amount: decimal.NewFromFloat(1.0)})
 
 	buy := &Order{ID: "b1", Side: "buy", Type: "limit", Price: decimal.NewFromInt(11000), Amount: decimal.NewFromFloat(2.0)}
-	trades := ob.Match(buy)
+	trades, _ := ob.Match(buy)
 
 	if len(trades) != 2 {
 		t.Fatalf("expected 2 trades, got %d", len(trades))

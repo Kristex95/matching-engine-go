@@ -7,11 +7,15 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func (ob *OrderBook) Match(order *Order) []Trade {
+func (ob *OrderBook) Match(order *Order) ([]Trade, []OrderUpdate) {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
 	var trades []Trade
+	var orderUpdates []OrderUpdate
+	
+	makerFilledAmounts := make(map[string]decimal.Decimal)
+
 	onTradeWrapper := func(taker, maker string, price, qty decimal.Decimal) {
 		trades = append(trades, Trade{
 			TakerOrderID:  taker,
@@ -23,7 +27,11 @@ func (ob *OrderBook) Match(order *Order) []Trade {
 			QuoteCurrency: ob.QuoteCurrency,
 			Timestamp:     time.Now().UnixMilli(),
 		})
+		
+		makerFilledAmounts[maker] = makerFilledAmounts[maker].Add(qty)
 	}
+
+	originalTakerAmount := order.Amount
 
 	switch order.Type {
 	case "market":
@@ -32,7 +40,67 @@ func (ob *OrderBook) Match(order *Order) []Trade {
 		ob.matchLimit(order, onTradeWrapper)
 	}
 
-	return trades
+	takerFilled := originalTakerAmount.Sub(order.Amount)
+	if takerFilled.IsPositive() {
+		var takerStatus string
+		if order.Amount.IsZero() {
+			takerStatus = "filled"
+		} else {
+			takerStatus = "partially_filled"
+		}
+		
+		orderUpdates = append(orderUpdates, OrderUpdate{
+			OrderID:         order.ID,
+			Status:          takerStatus,
+			FilledAmount:    takerFilled,
+			RemainingAmount: order.Amount,
+		})
+	} else if order.Type == "market" {
+		orderUpdates = append(orderUpdates, OrderUpdate{
+			OrderID:         order.ID,
+			Status:          "cancelled", 
+			FilledAmount:    decimal.Zero,
+			RemainingAmount: order.Amount,
+		})
+	}
+
+	for makerID, filledQty := range makerFilledAmounts {
+		remainingQty := decimal.Zero
+		isStillInBook := false
+
+		scanBook := func(book map[string]*PriceLevel) {
+			for _, level := range book {
+				for _, bo := range level.Orders {
+					if bo.ID == makerID {
+						remainingQty = bo.Amount
+						isStillInBook = true
+						break
+					}
+				}
+				if isStillInBook { break }
+			}
+		}
+
+		if order.Side == "buy" {
+			scanBook(ob.Asks) // Taker bought, so maker was selling
+		} else {
+			scanBook(ob.Bids) // Taker sold, so maker was buying
+		}
+
+		status := "filled"
+		if isStillInBook && remainingQty.IsPositive() {
+			status = "partially_filled"
+		}
+
+		orderUpdates = append(orderUpdates, OrderUpdate{
+			OrderID:         makerID,
+			Status:          status,
+			FilledAmount:    filledQty,
+			RemainingAmount: remainingQty,
+		})
+	}
+
+	return trades, orderUpdates
 }
 
 func (ob *OrderBook) matchMarket(order *Order, onTrade func(string, string, decimal.Decimal, decimal.Decimal)) {
@@ -114,8 +182,8 @@ func (ob *OrderBook) match(
 		}
 	}
 
+	order.Amount = remaining
 	if remaining.IsPositive() {
-		order.Amount = remaining
 		onUnfilled(order)
 	}
 }
