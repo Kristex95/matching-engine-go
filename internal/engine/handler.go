@@ -40,12 +40,13 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 	switch event.EventType {
 	case "order-created":
 		var payload struct {
-			OrderID  string `json:"order_id"`
-			Side     string `json:"side"`
-			Type     string `json:"type"`
-			Currency string `json:"currency"`
-			Price    string `json:"price"`
-			Amount   string `json:"amount"`
+			OrderID   string `json:"order_id"`
+			AccountID int 	 `json:"account_id"`
+			Side      string `json:"side"`
+			Type      string `json:"type"`
+			Currency  string `json:"currency"`
+			Price     string `json:"price"`
+			Amount    string `json:"amount"`
 		}
 
 		if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
@@ -86,11 +87,12 @@ func (handler *Handler) handleOrder(ctx context.Context, event StreamEvent) erro
 		}
 
 		order := orderbook.Order{
-			ID:     payload.OrderID,
-			Side:   payload.Side,
-			Type:   payload.Type,
-			Price:  price,
-			Amount: amount,
+			ID:        payload.OrderID,
+			AccountID: payload.AccountID,
+			Side:      payload.Side,
+			Type:      payload.Type,
+			Price:     price,
+			Amount:    amount,
 		}
 
 		trades, orderUpdates := book.Match(&order)

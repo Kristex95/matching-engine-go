@@ -180,6 +180,7 @@ func (ob *OrderBook) Cancel(orderID string) (*OrderUpdate, bool) {
 
 	return &OrderUpdate{
 		OrderID:         foundOrder.ID,
+		AccountID:       foundOrder.AccountID,
 		Status:          "cancelled",
 		FilledAmount:    decimal.Zero,
 		RemainingAmount: remainingAmount,
